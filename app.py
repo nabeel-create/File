@@ -118,7 +118,7 @@ st.set_page_config(page_title="File Share by Nabeel", layout="centered")
 st.markdown("""
 <style>
 body {
-    background-color: #f5f7fa;
+    background-color: ;
 }
 .header {
     text-align: center;
@@ -232,5 +232,5 @@ else:
 # =============================
 # 🧾 FOOTER
 # =============================
-st.markdown("<div class='footer'>© 2025 FileShare | Created with 💙 by Nabeel</div>", unsafe_allow_html=True)
+st.markdown("<div class='footer'>© 2025 FileShare | Created by Nabeel</div>", unsafe_allow_html=True)
 
