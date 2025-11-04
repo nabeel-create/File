@@ -16,7 +16,7 @@ MAX_FILE_SIZE_MB = 50
 
 UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
-# --- DB ---
+# --- DATABASE ---
 def init_db():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     c = conn.cursor()
@@ -36,7 +36,7 @@ def init_db():
 
 conn = init_db()
 
-# --- Helpers ---
+# --- HELPERS ---
 def generate_code(n=CODE_LENGTH):
     alphabet = string.ascii_letters + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(n))
@@ -48,9 +48,9 @@ def cleanup_expired():
     rows = c.fetchall()
     for _id, saved_name in rows:
         try:
-            path = UPLOAD_FOLDER / saved_name
-            if path.exists():
-                path.unlink()
+            fpath = UPLOAD_FOLDER / saved_name
+            if fpath.exists():
+                fpath.unlink()
         except Exception:
             pass
     c.execute("DELETE FROM files WHERE expires_at <= ?", (now,))
@@ -109,46 +109,42 @@ st.set_page_config(page_title="File Share by Nabeel", layout="centered")
 
 st.markdown("""
 <style>
-/* Beautiful gradient header */
 .header {
-    font-family: 'Poppins', sans-serif;
     text-align: center;
-    background: linear-gradient(90deg, #00C9FF, #92FE9D);
+    background: linear-gradient(90deg, #0072ff, #00c6ff);
     padding: 1.2rem;
     border-radius: 1rem;
-    color: black;
+    color: white;
     font-size: 1.8rem;
     font-weight: 600;
-    box-shadow: 0 0 25px rgba(0,0,0,0.15);
+    font-family: 'Poppins', sans-serif;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
 }
 
-/* Glowing name "By Nabeel" */
-
-@keyframes glow {
-    from { text-shadow: 0 0 5px #00e1ff; }
-    to { text-shadow: 0 0 25px #00e1ff, 0 0 50px #00e1ff; }
+.name {
+    text-align: center;
+    color: #555;
+    font-family: 'Poppins', sans-serif;
+    font-size: 1rem;
+    margin-top: 0.4rem;
+    font-style: italic;
 }
 
-/* Footer style */
 .footer {
-    position: fixed;
-    left: 0;
-    bottom: 0;
-    width: 100%;
     text-align: center;
     font-family: 'Poppins', sans-serif;
-    color: gray;
+    color: #999;
     font-size: 0.9rem;
-    padding: 0.4rem;
-    background: rgba(240, 240, 240, 0.6);
-    backdrop-filter: blur(4px);
+    margin-top: 2rem;
+    border-top: 1px solid #e6e6e6;
+    padding-top: 0.5rem;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # --- HEADER ---
 st.markdown("<div class='header'>🔐 Secure File Share Platform</div>", unsafe_allow_html=True)
-st.markdown("<div class='name'>✨ Made with ❤️ by Nabeel ✨</div>", unsafe_allow_html=True)
+st.markdown("<div class='name'>Made with ❤️ by Nabeel</div>", unsafe_allow_html=True)
 st.write("")
 
 # --- APP BODY ---
@@ -215,5 +211,6 @@ else:
                         st.success("✅ Download ready!")
 
 # --- FOOTER ---
-st.markdown("<div class='footer'>© 2025 FileShare | Created by <b>Nabeel</b></div>", unsafe_allow_html=True)
+st.markdown("<div class='footer'>© 2025 FileShare | Created by Nabeel</div>", unsafe_allow_html=True)
+
 
