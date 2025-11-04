@@ -7,17 +7,20 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-# --- CONFIG ---
+# =============================
+# 🌐 CONFIGURATION
+# =============================
 UPLOAD_FOLDER = Path("uploads")
 DB_PATH = "files.db"
-CODE_LENGTH = 8            # length of generated code (alphanumeric)
-EXPIRY_HOURS = 24          # default expiry after upload
-MAX_FILE_SIZE_MB = 50      # soft limit - Streamlit will handle server limits too
+CODE_LENGTH = 8
+EXPIRY_HOURS = 24
+MAX_FILE_SIZE_MB = 50
 
-# ensure folders exist
 UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
-# --- DB helpers ---
+# =============================
+# 💾 DATABASE SETUP
+# =============================
 def init_db():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     c = conn.cursor()
@@ -37,6 +40,9 @@ def init_db():
 
 conn = init_db()
 
+# =============================
+# 🔧 HELPER FUNCTIONS
+# =============================
 def generate_code(n=CODE_LENGTH):
     alphabet = string.ascii_letters + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(n))
@@ -44,7 +50,6 @@ def generate_code(n=CODE_LENGTH):
 def cleanup_expired():
     now = int(time.time())
     c = conn.cursor()
-    # select expired
     c.execute("SELECT id, saved_name FROM files WHERE expires_at <= ?", (now,))
     rows = c.fetchall()
     for _id, saved_name in rows:
@@ -57,20 +62,15 @@ def cleanup_expired():
     c.execute("DELETE FROM files WHERE expires_at <= ?", (now,))
     conn.commit()
 
-def save_file_and_record(uploaded_file, expiry_seconds):
-    # limit size check (soft)
+def save_file(uploaded_file, expiry_seconds):
     uploaded_file.seek(0, os.SEEK_END)
     size = uploaded_file.tell()
     uploaded_file.seek(0)
     if size > MAX_FILE_SIZE_MB * 1024 * 1024:
         raise ValueError(f"File exceeds {MAX_FILE_SIZE_MB} MB limit.")
 
-    # sanitize original filename
-    original_name = os.path.basename(uploaded_file.name)
-
     code = generate_code()
     c = conn.cursor()
-    # ensure uniqueness (very low collision chance but check anyway)
     while True:
         c.execute("SELECT 1 FROM files WHERE code=?", (code,))
         if c.fetchone() is None:
@@ -79,25 +79,22 @@ def save_file_and_record(uploaded_file, expiry_seconds):
 
     timestamp = int(time.time())
     expires_at = timestamp + expiry_seconds
-
-    # saved filename to avoid collisions and avoid path-traversal
-    saved_name = f"{timestamp}_{secrets.token_hex(8)}_{original_name}"
+    saved_name = f"{timestamp}_{secrets.token_hex(8)}_{uploaded_file.name}"
     dest = UPLOAD_FOLDER / saved_name
     with open(dest, "wb") as f:
         f.write(uploaded_file.read())
 
     c.execute(
         "INSERT INTO files (code, saved_name, original_name, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
-        (code, saved_name, original_name, timestamp, expires_at)
+        (code, saved_name, uploaded_file.name, timestamp, expires_at)
     )
     conn.commit()
     return code, expires_at
 
 def get_record_by_code(code):
     c = conn.cursor()
-    c.execute("SELECT id, saved_name, original_name, created_at, expires_at, downloaded FROM files WHERE code=?", (code,))
-    r = c.fetchone()
-    return r
+    c.execute("SELECT id, saved_name, original_name, expires_at, downloaded FROM files WHERE code=?", (code,))
+    return c.fetchone()
 
 def mark_downloaded_and_maybe_delete(record_id, saved_name, one_time):
     c = conn.cursor()
@@ -105,104 +102,135 @@ def mark_downloaded_and_maybe_delete(record_id, saved_name, one_time):
     conn.commit()
     if one_time:
         try:
-            path = UPLOAD_FOLDER / saved_name
-            if path.exists():
-                # Python 3.8+: unlink(missing_ok=True) would be nicer, but check exists above
-                path.unlink()
+            (UPLOAD_FOLDER / saved_name).unlink(missing_ok=True)
         except Exception:
             pass
         c.execute("DELETE FROM files WHERE id=?", (record_id,))
         conn.commit()
 
-# cleanup on app start
 cleanup_expired()
 
-# --- STREAMLIT UI ---
-st.set_page_config(page_title="FileShare with Code", layout="centered")
+# =============================
+# 🎨 STYLING
+# =============================
+st.set_page_config(page_title="File Share by Nabeel", layout="centered")
 
-st.title("🔐 File Share — Upload & Download via Secret Code")
-st.write(
-    "Upload a file to generate a secret code. "
-    "Share that code so others can download the file securely on another computer."
-)
+st.markdown("""
+<style>
+body {
+    background-color: #f5f7fa;
+}
+.header {
+    text-align: center;
+    padding: 1.5rem;
+    font-size: 2rem;
+    font-weight: bold;
+    font-family: 'Poppins', sans-serif;
+    color: white;
+    background: linear-gradient(90deg, #0072ff, #00c6ff);
+    border-radius: 1rem;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    margin-bottom: 1rem;
+    animation: glow 2s ease-in-out infinite alternate;
+}
+@keyframes glow {
+  from { text-shadow: 0 0 5px #00c6ff, 0 0 10px #0072ff; }
+  to { text-shadow: 0 0 15px #00c6ff, 0 0 30px #0072ff; }
+}
+.name {
+    text-align: center;
+    font-family: 'Poppins', sans-serif;
+    font-size: 1.1rem;
+    color: #333;
+    margin-bottom: 2rem;
+    font-style: italic;
+}
+.footer {
+    text-align: center;
+    font-family: 'Poppins', sans-serif;
+    color: #888;
+    font-size: 0.9rem;
+    margin-top: 3rem;
+    border-top: 1px solid #ddd;
+    padding-top: 0.8rem;
+}
+</style>
+""", unsafe_allow_html=True)
 
-# Initialize session state
+# =============================
+# 🧭 HEADER
+# =============================
+st.markdown("<div class='header'>🔐 Secure File Share Platform</div>", unsafe_allow_html=True)
+st.markdown("<div class='name'>✨ Made with ❤️ by <b>Nabeel</b> ✨</div>", unsafe_allow_html=True)
+st.write("")
+
+# =============================
+# ⚙️ MAIN APP LOGIC
+# =============================
 if "one_time_download" not in st.session_state:
     st.session_state["one_time_download"] = True
 
-mode = st.radio("Choose action", ("Upload & generate code", "Enter code to download"))
+mode = st.radio("Choose Action", ("📤 Upload & Generate Code", "📥 Enter Code to Download"))
 
-# ---------------- UPLOAD SECTION ----------------
-if mode == "Upload & generate code":
-    st.header("📤 Upload File")
-    uploaded_file = st.file_uploader("Choose file to upload", accept_multiple_files=False)
+if mode == "📤 Upload & Generate Code":
+    st.subheader("Upload Your File")
+    uploaded = st.file_uploader("Select a file to upload", accept_multiple_files=False)
 
     col1, col2 = st.columns(2)
     with col1:
-        expiry_hours = st.number_input("Expires in (hours)", min_value=1, max_value=168, value=EXPIRY_HOURS)
+        expiry = st.number_input("Expires in (hours)", 1, 168, EXPIRY_HOURS)
     with col2:
-        one_time = st.checkbox("One-time download (delete after first use)", value=True)
+        one_time = st.checkbox("One-time download (delete after first use)", True)
 
-    if st.button("Upload & Generate Code"):
-        if uploaded_file is None:
+    if st.button("Generate Code"):
+        if not uploaded:
             st.error("Please select a file first.")
         else:
             try:
-                code, expires_at = save_file_and_record(uploaded_file, expiry_hours * 3600)
+                code, expires_at = save_file(uploaded, expiry * 3600)
                 exp_dt = datetime.utcfromtimestamp(expires_at)
                 st.session_state["one_time_download"] = one_time
 
                 st.success("✅ File uploaded successfully!")
-                st.write("Your secret code (share this with the downloader):")
+                st.write("Here is your secret code:")
                 st.code(code, language="text")
-                st.write(f"⏰ Expires on (UTC): **{exp_dt}**")
-                st.info("Keep this code safe — anyone with it can download the file until it expires.")
-            except ValueError as e:
-                st.error(str(e))
+                st.info(f"⏰ Expires on (UTC): **{exp_dt}**")
             except Exception as e:
-                st.error("Upload failed: " + str(e))
+                st.error(str(e))
 
-# ---------------- DOWNLOAD SECTION ----------------
 else:
-    st.header("📥 Download File with Code")
-    code_input = st.text_input("Enter download code", value="")
+    st.subheader("Download File by Code")
+    code_input = st.text_input("Enter your secret code")
 
-    if st.button("Fetch File"):
+    if st.button("Download File"):
         if not code_input.strip():
-            st.error("Enter a valid code.")
+            st.error("Please enter a valid code.")
         else:
             cleanup_expired()
             rec = get_record_by_code(code_input.strip())
-            if rec is None:
+            if not rec:
                 st.error("❌ Invalid or expired code.")
             else:
-                rec_id, saved_name, orig_name, created_at, expires_at, downloaded = rec
+                rec_id, saved, orig, expires_at, downloaded = rec
                 now = int(time.time())
-                one_time = st.session_state.get("one_time_download", True)
-
+                one_time = st.session_state["one_time_download"]
                 if expires_at <= now:
                     st.error("⏳ This code has expired.")
                 elif one_time and downloaded:
-                    st.error("⚠️ This file was already downloaded (one-time code).")
+                    st.error("⚠️ File already downloaded (one-time use).")
                 else:
-                    path = UPLOAD_FOLDER / saved_name
+                    path = UPLOAD_FOLDER / saved
                     if not path.exists():
-                        st.error("File not found on server (maybe deleted).")
+                        st.error("File not found on server.")
                     else:
                         with open(path, "rb") as f:
                             data = f.read()
-                        st.write(f"Original filename: **{orig_name}**")
-                        st.download_button("⬇️ Download File", data=data, file_name=orig_name)
-                        mark_downloaded_and_maybe_delete(rec_id, saved_name, one_time)
-                        st.success("Download ready! If one-time mode is on, file is now deleted from server.")
+                        st.download_button("⬇️ Download File", data=data, file_name=orig)
+                        mark_downloaded_and_maybe_delete(rec_id, saved, one_time)
+                        st.success("✅ File ready for download!")
 
-# ---------------- ADMIN (optional) ----------------
-if st.sidebar.checkbox("🛠 Show active codes (Admin)", value=False):
-    st.sidebar.warning("This admin view shows secret codes — remove or protect before making the app public.")
-    c = conn.cursor()
-    c.execute("SELECT id, code, original_name, created_at, expires_at, downloaded FROM files ORDER BY created_at DESC")
-    rows = c.fetchall()
-    st.sidebar.write("Active entries:")
-    for r in rows:
-        id_, code, oname, c_at, e_at, dl = r
-        st.sidebar.write(f"{code} — {oname} — Expires {datetime.utcfromtimestamp(e_at)} — downloaded={dl}")
+# =============================
+# 🧾 FOOTER
+# =============================
+st.markdown("<div class='footer'>© 2025 FileShare | Created with 💙 by Nabeel</div>", unsafe_allow_html=True)
+
