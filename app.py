@@ -161,7 +161,7 @@ body {
 # 🧭 HEADER
 # =============================
 st.markdown("<div class='header'>🔐 Secure File Share Platform</div>", unsafe_allow_html=True)
-st.markdown("<div class='name'>✨ Made with ❤️ by <b>Nabeel</b> ✨</div>", unsafe_allow_html=True)
+st.markdown("<div class='name'>✨ Made by <b>Nabeel</b> ✨</div>", unsafe_allow_html=True)
 st.write("")
 
 # =============================
