@@ -144,7 +144,7 @@ st.markdown("""
 
 # --- HEADER ---
 st.markdown("<div class='header'>🔐 Secure File Share Platform</div>", unsafe_allow_html=True)
-st.markdown("<div class='name'>Made with ❤️ by Nabeel</div>", unsafe_allow_html=True)
+st.markdown("<div class='name'> By Nabeel</div>", unsafe_allow_html=True)
 st.write("")
 
 # --- APP BODY ---
