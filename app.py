@@ -123,14 +123,7 @@ st.markdown("""
 }
 
 /* Glowing name "By Nabeel" */
-.name {
-    text-align: center;
-    font-family: 'Poppins', sans-serif;
-    color: #fff;
-    font-size: 1.2rem;
-    text-shadow: 0 0 10px #00e1ff, 0 0 20px #00e1ff;
-    animation: glow 2s ease-in-out infinite alternate;
-}
+
 @keyframes glow {
     from { text-shadow: 0 0 5px #00e1ff; }
     to { text-shadow: 0 0 25px #00e1ff, 0 0 50px #00e1ff; }
