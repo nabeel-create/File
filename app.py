@@ -176,6 +176,18 @@ body { background-color: #f5f7fa; }
     border-top: 1px solid #ddd;
     padding-top: 0.8rem;
 }
+.card {
+    background: #fff;
+    padding: 1rem;
+    border-radius: 1rem;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    text-align: center;
+    margin-bottom: 1rem;
+}
+.card-title { font-weight: bold; font-size: 1.2rem; }
+.card-value { font-size: 1.5rem; color: #0072ff; font-weight: bold; }
+.progress { height: 10px; border-radius: 5px; background-color: #e0e0e0; }
+.progress-bar { height: 10px; border-radius: 5px; background-color: #0072ff; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -183,18 +195,16 @@ st.markdown("<div class='header'>🔐 Secure File Share Platform</div>", unsafe_
 st.markdown("<div class='name'>✨ Made with ❤️ by <b>Nabeel</b> ✨</div>", unsafe_allow_html=True)
 
 # =============================
-# ⚙️ MAIN APP (Upload & Download in main page)
+# ⚙️ MAIN APP (Upload & Download in tabs)
 # =============================
 if "one_time_download" not in st.session_state:
     st.session_state["one_time_download"] = True
 
-# ---- Main UI ----
 tab = st.tabs(["📤 Upload", "📥 Download"])
 
 with tab[0]:
     st.subheader("Upload File & Generate Code")
     uploaded = st.file_uploader("Select a file", accept_multiple_files=False)
-
     col1, col2 = st.columns(2)
     with col1:
         expiry = st.number_input("Expires in (hours)", 1, 168, EXPIRY_HOURS)
@@ -219,7 +229,6 @@ with tab[0]:
 with tab[1]:
     st.subheader("Download File by Code")
     code_input = st.text_input("Enter your code")
-
     if st.button("Download File"):
         if not code_input.strip():
             st.error("Please enter a valid code.")
@@ -246,7 +255,9 @@ with tab[1]:
                         mark_downloaded_and_maybe_delete(rec_id, saved, one_time=True)
                         st.success("✅ Download ready!")
 
-# ---- Admin in Sidebar (Hidden until login) ----
+# =============================
+# ---- Admin Panel in Sidebar ----
+# =============================
 st.sidebar.subheader("🛠️ Admin Panel")
 if "is_admin" not in st.session_state:
     st.session_state["is_admin"] = False
@@ -262,6 +273,11 @@ if not st.session_state["is_admin"]:
 
 if st.session_state["is_admin"]:
     st.sidebar.success("Welcome Admin 👑")
+
+    # --- Logout Button ---
+    if st.sidebar.button("Logout"):
+        st.session_state["is_admin"] = False
+        st.sidebar.info("Logged out successfully.")
 
     # --- Dashboard Metrics ---
     c = conn.cursor()
@@ -279,10 +295,29 @@ if st.session_state["is_admin"]:
     downloads_count = c.fetchone()[0] or 0
 
     st.sidebar.markdown("### 📊 Dashboard")
-    st.sidebar.metric("Total Files", total_files)
-    st.sidebar.metric("Active Files", active_files)
-    st.sidebar.metric("Expired Files", expired_files)
-    st.sidebar.metric("Total Downloads", downloads_count)
+
+    st.sidebar.markdown(f"""
+    <div class='card'>
+        <div class='card-title'>Total Files</div>
+        <div class='card-value'>{total_files}</div>
+        <div class='progress'><div class='progress-bar' style='width:{min(total_files,100)}%'></div></div>
+    </div>
+    <div class='card'>
+        <div class='card-title'>Active Files</div>
+        <div class='card-value'>{active_files}</div>
+        <div class='progress'><div class='progress-bar' style='width:{min(active_files,100)}%'></div></div>
+    </div>
+    <div class='card'>
+        <div class='card-title'>Expired Files</div>
+        <div class='card-value'>{expired_files}</div>
+        <div class='progress'><div class='progress-bar' style='width:{min(expired_files,100)}%'></div></div>
+    </div>
+    <div class='card'>
+        <div class='card-title'>Downloads</div>
+        <div class='card-value'>{downloads_count}</div>
+        <div class='progress'><div class='progress-bar' style='width:{min(downloads_count,100)}%'></div></div>
+    </div>
+    """, unsafe_allow_html=True)
 
     # --- Table of All Files ---
     df = get_all_files()
