@@ -1,5 +1,5 @@
 # ======================================================
-# 📁 Nabeel Advanced File Share System – Separated Modules
+# 📁 Nabeel Advanced File Share System – Sidebar Admin
 # ======================================================
 
 import streamlit as st
@@ -17,9 +17,9 @@ from io import BytesIO
 ADMIN_PASSWORD = "nabeel123"
 DB = "files.db"
 
-st.set_page_config(page_title="Nabeel File Share", layout="centered")
+st.set_page_config(page_title="Nabeel File Share", layout="wide")
 
-# Dark Mode
+# Dark Mode Toggle
 dark_mode = st.sidebar.checkbox("🌙 Dark Mode")
 if dark_mode:
     st.markdown("""
@@ -113,12 +113,12 @@ def generate_qr(text):
 st.markdown("<h1 style='text-align:center;'>📁 Nabeel Advanced File Sharing</h1>", unsafe_allow_html=True)
 
 # -----------------------------
-# ADMIN LOGIN STATE
+# ADMIN LOGIN IN SIDEBAR
 # -----------------------------
 if "admin" not in st.session_state:
     st.session_state.admin = False
 
-st.sidebar.markdown("### 🔐 Admin Login")
+st.sidebar.markdown("### 🔐 Admin Panel")
 admin_input = st.sidebar.text_input("Password", type="password")
 if st.sidebar.button("Login"):
     if admin_input == ADMIN_PASSWORD:
@@ -128,72 +128,62 @@ if st.sidebar.button("Login"):
         st.sidebar.error("Wrong Password!")
 
 # -----------------------------
-# NAVIGATION
-# -----------------------------
-option = st.sidebar.radio("Navigation", ["📤 Upload", "📥 Download", "🛠 Admin Panel"])
-
-# -----------------------------
 # UPLOAD SECTION
 # -----------------------------
-if option == "📤 Upload":
-    st.subheader("📤 Upload Files")
-    uploaded_files = st.file_uploader("Select multiple files", accept_multiple_files=True)
-    expiry = st.number_input("Expiry Time (Hours)", 1, 168, 12)
-    one_time = st.checkbox("One-Time Download", True)
+st.subheader("📤 Upload Files")
+uploaded_files = st.file_uploader("Select multiple files", accept_multiple_files=True)
+expiry = st.number_input("Expiry Time (Hours)", 1, 168, 12)
+one_time = st.checkbox("One-Time Download", True)
 
-    if uploaded_files and st.button("Upload Files"):
-        st.write("### Generated Codes & QR Codes:")
-        for file in uploaded_files:
-            code, expires_at, saved_file = save_file(file, expiry * 3600, one_time)
-            st.success(f"File: {file.name}")
-            st.code(code)
-            qr_img = generate_qr(code)
-            st.image(qr_img, width=150)
-            st.write(f"⏳ Expires: {time.ctime(expires_at)}")
-            st.markdown("---")
+if uploaded_files and st.button("Upload Files"):
+    st.write("### Generated Codes & QR Codes:")
+    for file in uploaded_files:
+        code, expires_at, saved_file = save_file(file, expiry * 3600, one_time)
+        st.success(f"File: {file.name}")
+        st.code(code)
+        qr_img = generate_qr(code)
+        st.image(qr_img, width=150)
+        st.write(f"⏳ Expires: {time.ctime(expires_at)}")
+        st.markdown("---")
 
 # -----------------------------
 # DOWNLOAD SECTION
 # -----------------------------
-elif option == "📥 Download":
-    st.subheader("📥 Download File")
-    code_input = st.text_input("Enter Code")
-    if st.button("Download"):
-        rec = get_record(code_input.upper())
-        if not rec:
-            st.error("❌ Invalid or expired code")
-        else:
-            file_id, saved_name, original, expires_at, downloaded, one_time_flag = rec
-            now = int(time.time())
-            if now > expires_at:
-                st.error("⛔ File expired")
-            elif downloaded and one_time_flag == 1:
-                st.error("⛔ One-time file already downloaded")
-            else:
-                with open(saved_name, "rb") as f:
-                    st.download_button("⬇ Download", f, file_name=original)
-                mark_download(file_id, saved_name, one_time_flag == 1, code_input.upper())
-                st.success("✔ Download successful!")
-
-# -----------------------------
-# ADMIN PANEL
-# -----------------------------
-elif option == "🛠 Admin Panel":
-    if not st.session_state.admin:
-        st.warning("⚠️ Please log in as admin to access this panel.")
+st.subheader("📥 Download File")
+code_input = st.text_input("Enter Code")
+if st.button("Download"):
+    rec = get_record(code_input.upper())
+    if not rec:
+        st.error("❌ Invalid or expired code")
     else:
-        st.subheader("🛠 Admin Panel")
-        st.markdown("### 📄 All Files")
-        files = c.execute("SELECT code, original_name, created_at, expires_at, downloaded FROM files").fetchall()
-        if len(files) == 0:
-            st.info("No files stored.")
+        file_id, saved_name, original, expires_at, downloaded, one_time_flag = rec
+        now = int(time.time())
+        if now > expires_at:
+            st.error("⛔ File expired")
+        elif downloaded and one_time_flag == 1:
+            st.error("⛔ One-time file already downloaded")
         else:
-            for f in files:
-                st.write(f"**Code:** {f[0]} | **File:** {f[1]} | **Downloaded:** {f[4]}")
-                st.write(f"Created: {time.ctime(f[2])} | Expires: {time.ctime(f[3])}")
-                st.markdown("---")
+            with open(saved_name, "rb") as f:
+                st.download_button("⬇ Download", f, file_name=original)
+            mark_download(file_id, saved_name, one_time_flag == 1, code_input.upper())
+            st.success("✔ Download successful!")
 
-        st.markdown("### 📜 Usage Logs")
-        logs = c.execute("SELECT code, action, timestamp FROM logs ORDER BY id DESC").fetchall()
-        for lg in logs:
-            st.write(f"➡ **{lg[1]}** | Code: {lg[0]} | Time: {time.ctime(lg[2])}")
+# -----------------------------
+# ADMIN PANEL IN SIDEBAR
+# -----------------------------
+if st.session_state.admin:
+    st.sidebar.markdown("### 🛠 Admin Controls")
+    st.sidebar.markdown("#### 📄 All Files")
+    files = c.execute("SELECT code, original_name, created_at, expires_at, downloaded FROM files").fetchall()
+    if len(files) == 0:
+        st.sidebar.info("No files stored.")
+    else:
+        for f in files:
+            st.sidebar.write(f"**Code:** {f[0]} | **File:** {f[1]} | **Downloaded:** {f[4]}")
+            st.sidebar.write(f"Created: {time.ctime(f[2])} | Expires: {time.ctime(f[3])}")
+            st.sidebar.markdown("---")
+
+    st.sidebar.markdown("#### 📜 Usage Logs")
+    logs = c.execute("SELECT code, action, timestamp FROM logs ORDER BY id DESC").fetchall()
+    for lg in logs:
+        st.sidebar.write(f"➡ **{lg[1]}** | Code: {lg[0]} | Time: {time.ctime(lg[2])}")
