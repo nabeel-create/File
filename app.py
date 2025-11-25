@@ -80,7 +80,7 @@ def save_file(uploaded_file, expiry_seconds):
         code = generate_code()
 
     timestamp = int(time.time())
-    expires_at = timestamp + int(expiry_seconds)  # store as integer
+    expires_at = timestamp + int(expiry_seconds)
     saved_name = f"{timestamp}_{secrets.token_hex(8)}_{uploaded_file.name}"
     dest = UPLOAD_FOLDER / saved_name
     with open(dest, "wb") as f:
@@ -179,22 +179,19 @@ body { background-color: #f5f7fa; }
 </style>
 """, unsafe_allow_html=True)
 
-# =============================
-# 🧭 HEADER
-# =============================
 st.markdown("<div class='header'>🔐 Secure File Share Platform</div>", unsafe_allow_html=True)
 st.markdown("<div class='name'>✨ Made with ❤️ by <b>Nabeel</b> ✨</div>", unsafe_allow_html=True)
 
 # =============================
-# ⚙️ MAIN APP
+# ⚙️ MAIN APP (Upload & Download in main page)
 # =============================
 if "one_time_download" not in st.session_state:
     st.session_state["one_time_download"] = True
 
-mode = st.sidebar.radio("Navigation", ("📤 Upload", "📥 Download", "🛠️ Admin Panel"))
+# ---- Main UI ----
+tab = st.tabs(["📤 Upload", "📥 Download"])
 
-# ---- Upload ----
-if mode == "📤 Upload":
+with tab[0]:
     st.subheader("Upload File & Generate Code")
     uploaded = st.file_uploader("Select a file", accept_multiple_files=False)
 
@@ -219,8 +216,7 @@ if mode == "📤 Upload":
             except Exception as e:
                 st.error(str(e))
 
-# ---- Download ----
-elif mode == "📥 Download":
+with tab[1]:
     st.subheader("Download File by Code")
     code_input = st.text_input("Enter your code")
 
@@ -250,28 +246,27 @@ elif mode == "📥 Download":
                         mark_downloaded_and_maybe_delete(rec_id, saved, one_time=True)
                         st.success("✅ Download ready!")
 
-# ---- Admin ----
-elif mode == "🛠️ Admin Panel":
-    st.subheader("Admin Login")
-    password = st.text_input("Enter admin passcode", type="password")
-    if st.button("Login"):
-        if password == ADMIN_PASSCODE:
-            st.session_state["is_admin"] = True
-            st.success("Access granted ✅")
+# ---- Admin in Sidebar ----
+st.sidebar.subheader("🛠️ Admin Panel")
+password = st.sidebar.text_input("Enter admin passcode", type="password")
+if st.sidebar.button("Login as Admin"):
+    if password == ADMIN_PASSCODE:
+        st.session_state["is_admin"] = True
+        st.sidebar.success("Access granted ✅")
+    else:
+        st.sidebar.error("Wrong passcode.")
+
+if st.session_state.get("is_admin", False):
+    st.sidebar.success("Welcome Admin 👑")
+    df = get_all_files()
+    st.sidebar.dataframe(df, use_container_width=True)
+
+    file_id = st.sidebar.number_input("Enter File ID to Delete", min_value=1, step=1)
+    if st.sidebar.button("Delete File"):
+        if delete_file(file_id):
+            st.sidebar.success("🗑️ File deleted successfully.")
         else:
-            st.error("Wrong passcode.")
-
-    if st.session_state.get("is_admin", False):
-        st.success("Welcome Admin 👑")
-        df = get_all_files()
-        st.dataframe(df, use_container_width=True)
-
-        file_id = st.number_input("Enter File ID to Delete", min_value=1, step=1)
-        if st.button("Delete File"):
-            if delete_file(file_id):
-                st.success("🗑️ File deleted successfully.")
-            else:
-                st.error("File not found.")
+            st.sidebar.error("File not found.")
 
 # =============================
 # 🧾 FOOTER
