@@ -186,8 +186,6 @@ body { background-color: #f5f7fa; }
 }
 .card-title { font-weight: bold; font-size: 1.2rem; }
 .card-value { font-size: 1.5rem; color: #0072ff; font-weight: bold; }
-.progress { height: 10px; border-radius: 5px; background-color: #e0e0e0; }
-.progress-bar { height: 10px; border-radius: 5px; background-color: #0072ff; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -256,12 +254,13 @@ with tab[1]:
                         st.success("✅ Download ready!")
 
 # =============================
-# ---- Admin Panel in Sidebar ----
+# ---- Admin Panel in Sidebar (Hidden until login) ----
 # =============================
 st.sidebar.subheader("🛠️ Admin Panel")
 if "is_admin" not in st.session_state:
     st.session_state["is_admin"] = False
 
+# Show login input if not admin
 if not st.session_state["is_admin"]:
     password = st.sidebar.text_input("Enter admin passcode", type="password")
     if st.sidebar.button("Login as Admin"):
@@ -271,14 +270,15 @@ if not st.session_state["is_admin"]:
         else:
             st.sidebar.error("Wrong passcode.")
 
+# Show full admin panel only if logged in
 if st.session_state["is_admin"]:
     st.sidebar.success("Welcome Admin 👑")
-
+    
     # --- Logout Button ---
     if st.sidebar.button("Logout"):
         st.session_state["is_admin"] = False
         st.sidebar.info("Logged out successfully.")
-
+    
     # --- Dashboard Metrics ---
     c = conn.cursor()
     now = int(time.time())
@@ -295,29 +295,12 @@ if st.session_state["is_admin"]:
     downloads_count = c.fetchone()[0] or 0
 
     st.sidebar.markdown("### 📊 Dashboard")
-
     st.sidebar.markdown(f"""
-    <div class='card'>
-        <div class='card-title'>Total Files</div>
-        <div class='card-value'>{total_files}</div>
-        <div class='progress'><div class='progress-bar' style='width:{min(total_files,100)}%'></div></div>
-    </div>
-    <div class='card'>
-        <div class='card-title'>Active Files</div>
-        <div class='card-value'>{active_files}</div>
-        <div class='progress'><div class='progress-bar' style='width:{min(active_files,100)}%'></div></div>
-    </div>
-    <div class='card'>
-        <div class='card-title'>Expired Files</div>
-        <div class='card-value'>{expired_files}</div>
-        <div class='progress'><div class='progress-bar' style='width:{min(expired_files,100)}%'></div></div>
-    </div>
-    <div class='card'>
-        <div class='card-title'>Downloads</div>
-        <div class='card-value'>{downloads_count}</div>
-        <div class='progress'><div class='progress-bar' style='width:{min(downloads_count,100)}%'></div></div>
-    </div>
-    """, unsafe_allow_html=True)
+    Total Files: {total_files}  
+    Active Files: {active_files}  
+    Expired Files: {expired_files}  
+    Downloads: {downloads_count}
+    """)
 
     # --- Table of All Files ---
     df = get_all_files()
