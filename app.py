@@ -26,6 +26,8 @@ UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 def init_db():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     c = conn.cursor()
+    
+    # Create table if not exists
     c.execute("""
         CREATE TABLE IF NOT EXISTS files (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,11 +36,18 @@ def init_db():
             original_name TEXT,
             created_at INTEGER,
             expires_at INTEGER,
-            downloaded INTEGER DEFAULT 0,
-            one_time INTEGER DEFAULT 1
+            downloaded INTEGER DEFAULT 0
         )
     """)
     conn.commit()
+    
+    # Check if 'one_time' column exists
+    c.execute("PRAGMA table_info(files)")
+    columns = [col[1] for col in c.fetchall()]
+    if "one_time" not in columns:
+        c.execute("ALTER TABLE files ADD COLUMN one_time INTEGER DEFAULT 1")
+        conn.commit()
+    
     return conn
 
 conn = init_db()
@@ -302,22 +311,18 @@ if st.session_state["is_admin"]:
     <div class='card'>
         <div class='card-title'>Total Files</div>
         <div class='card-value'>{total_files}</div>
-        <div class='progress'><div class='progress-bar' style='width:{min(total_files,100)}%'></div></div>
     </div>
     <div class='card'>
         <div class='card-title'>Active Files</div>
         <div class='card-value'>{active_files}</div>
-        <div class='progress'><div class='progress-bar' style='width:{min(active_files,100)}%'></div></div>
     </div>
     <div class='card'>
         <div class='card-title'>Expired Files</div>
         <div class='card-value'>{expired_files}</div>
-        <div class='progress'><div class='progress-bar' style='width:{min(expired_files,100)}%'></div></div>
     </div>
     <div class='card'>
         <div class='card-title'>Downloads</div>
         <div class='card-value'>{downloads_count}</div>
-        <div class='progress'><div class='progress-bar' style='width:{min(downloads_count,100)}%'></div></div>
     </div>
     """, unsafe_allow_html=True)
 
