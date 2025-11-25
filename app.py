@@ -34,7 +34,8 @@ def init_db():
             original_name TEXT,
             created_at INTEGER,
             expires_at INTEGER,
-            downloaded INTEGER DEFAULT 0
+            downloaded INTEGER DEFAULT 0,
+            one_time INTEGER DEFAULT 1
         )
     """)
     conn.commit()
@@ -64,7 +65,7 @@ def cleanup_expired():
     c.execute("DELETE FROM files WHERE expires_at <= ?", (now,))
     conn.commit()
 
-def save_file(uploaded_file, expiry_seconds):
+def save_file(uploaded_file, expiry_seconds, one_time=True):
     uploaded_file.seek(0, os.SEEK_END)
     size = uploaded_file.tell()
     uploaded_file.seek(0)
@@ -87,15 +88,15 @@ def save_file(uploaded_file, expiry_seconds):
         f.write(uploaded_file.read())
 
     c.execute(
-        "INSERT INTO files (code, saved_name, original_name, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
-        (code, saved_name, uploaded_file.name, timestamp, expires_at)
+        "INSERT INTO files (code, saved_name, original_name, created_at, expires_at, one_time) VALUES (?, ?, ?, ?, ?, ?)",
+        (code, saved_name, uploaded_file.name, timestamp, expires_at, int(one_time))
     )
     conn.commit()
     return code, expires_at
 
 def get_record_by_code(code):
     c = conn.cursor()
-    c.execute("SELECT id, saved_name, original_name, expires_at, downloaded FROM files WHERE code=?", (code,))
+    c.execute("SELECT id, saved_name, original_name, expires_at, downloaded, one_time FROM files WHERE code=?", (code,))
     return c.fetchone()
 
 def mark_downloaded_and_maybe_delete(record_id, saved_name, one_time):
@@ -112,11 +113,12 @@ def mark_downloaded_and_maybe_delete(record_id, saved_name, one_time):
 
 def get_all_files():
     c = conn.cursor()
-    c.execute("SELECT id, code, original_name, downloaded, created_at, expires_at FROM files")
+    c.execute("SELECT id, code, original_name, downloaded, created_at, expires_at, one_time FROM files")
     rows = c.fetchall()
-    df = pd.DataFrame(rows, columns=["ID", "Code", "File Name", "Downloaded", "Created At", "Expires At"])
+    df = pd.DataFrame(rows, columns=["ID", "Code", "File Name", "Downloaded", "Created At", "Expires At", "One-Time"])
     df["Created At"] = df["Created At"].apply(lambda t: datetime.utcfromtimestamp(int(t)).strftime('%Y-%m-%d %H:%M:%S'))
     df["Expires At"] = df["Expires At"].apply(lambda t: datetime.utcfromtimestamp(int(t)).strftime('%Y-%m-%d %H:%M:%S'))
+    df["One-Time"] = df["One-Time"].apply(lambda x: "Yes" if x else "No")
     return df
 
 def delete_file(file_id):
@@ -217,7 +219,7 @@ with tab[0]:
         else:
             try:
                 expiry_seconds = int(expiry * 3600)
-                code, expires_at = save_file(uploaded, expiry_seconds)
+                code, expires_at = save_file(uploaded, expiry_seconds, one_time)
                 st.session_state["one_time_download"] = one_time
                 st.success("✅ File uploaded successfully!")
                 st.write("Your secret code:")
@@ -238,11 +240,12 @@ with tab[1]:
             if not rec:
                 st.error("❌ Invalid or expired code.")
             else:
-                rec_id, saved, orig, expires_at, downloaded = rec
+                rec_id, saved, orig, expires_at, downloaded, one_time_db = rec
+                one_time_flag = bool(one_time_db)
                 now = int(time.time())
                 if expires_at <= now:
                     st.error("⏳ Code expired.")
-                elif downloaded:
+                elif one_time_flag and downloaded:
                     st.error("⚠️ File already downloaded (one-time).")
                 else:
                     path = UPLOAD_FOLDER / saved
@@ -252,7 +255,7 @@ with tab[1]:
                         with open(path, "rb") as f:
                             data = f.read()
                         st.download_button("⬇️ Download File", data=data, file_name=orig)
-                        mark_downloaded_and_maybe_delete(rec_id, saved, one_time=True)
+                        mark_downloaded_and_maybe_delete(rec_id, saved, one_time_flag)
                         st.success("✅ Download ready!")
 
 # =============================
@@ -295,7 +298,6 @@ if st.session_state["is_admin"]:
     downloads_count = c.fetchone()[0] or 0
 
     st.sidebar.markdown("### 📊 Dashboard")
-
     st.sidebar.markdown(f"""
     <div class='card'>
         <div class='card-title'>Total Files</div>
