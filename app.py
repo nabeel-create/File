@@ -62,25 +62,17 @@ def cleanup_expired():
             fpath = UPLOAD_FOLDER / saved_name
             if fpath.exists():
                 fpath.unlink()
-        except Exception:
+        except:
             pass
     c.execute("DELETE FROM files WHERE expires_at <= ?", (now,))
     conn.commit()
 
-def save_file(uploaded_file, expiry_seconds, one_time=True, ftype="file"):
-    # For Streamlit UploadedFile or Path object
-    if hasattr(uploaded_file, "read"):
-        uploaded_file.seek(0, os.SEEK_END)
-        size = uploaded_file.tell()
-        uploaded_file.seek(0)
-        if size > MAX_FILE_SIZE_MB * 1024 * 1024:
-            raise ValueError(f"File exceeds {MAX_FILE_SIZE_MB} MB limit.")
-        file_data = uploaded_file.read()
-        orig_name = uploaded_file.name
-    else:
-        # Path object (for text files)
-        file_data = uploaded_file.read_bytes()
-        orig_name = uploaded_file.name
+def save_file(uploaded_file, expiry_seconds, one_time=True, file_type="file"):
+    uploaded_file.seek(0, os.SEEK_END)
+    size = uploaded_file.tell()
+    uploaded_file.seek(0)
+    if size > MAX_FILE_SIZE_MB * 1024 * 1024:
+        raise ValueError(f"File exceeds {MAX_FILE_SIZE_MB} MB limit.")
 
     code = generate_code()
     c = conn.cursor()
@@ -92,14 +84,14 @@ def save_file(uploaded_file, expiry_seconds, one_time=True, ftype="file"):
 
     timestamp = int(time.time())
     expires_at = timestamp + int(expiry_seconds)
-    saved_name = f"{timestamp}_{secrets.token_hex(8)}_{orig_name}"
+    saved_name = f"{timestamp}_{secrets.token_hex(8)}_{uploaded_file.name}"
     dest = UPLOAD_FOLDER / saved_name
     with open(dest, "wb") as f:
-        f.write(file_data)
+        f.write(uploaded_file.read())
 
     c.execute(
         "INSERT INTO files (code, saved_name, original_name, created_at, expires_at, one_time, type) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (code, saved_name, orig_name, timestamp, expires_at, int(one_time), ftype)
+        (code, saved_name, uploaded_file.name, timestamp, expires_at, int(one_time), file_type)
     )
     conn.commit()
     return code, expires_at
@@ -116,7 +108,7 @@ def mark_downloaded_and_maybe_delete(record_id, saved_name, one_time):
     if one_time:
         try:
             (UPLOAD_FOLDER / saved_name).unlink(missing_ok=True)
-        except Exception:
+        except:
             pass
         c.execute("DELETE FROM files WHERE id=?", (record_id,))
         conn.commit()
@@ -125,7 +117,7 @@ def get_all_files():
     c = conn.cursor()
     c.execute("SELECT id, code, original_name, downloaded, created_at, expires_at, one_time, type FROM files")
     rows = c.fetchall()
-    df = pd.DataFrame(rows, columns=["ID", "Code", "File Name", "Downloaded", "Created At", "Expires At", "One-Time", "Type"])
+    df = pd.DataFrame(rows, columns=["ID","Code","File Name","Downloaded","Created At","Expires At","One-Time","Type"])
     df["Created At"] = df["Created At"].apply(lambda t: datetime.utcfromtimestamp(int(t)).strftime('%Y-%m-%d %H:%M:%S'))
     df["Expires At"] = df["Expires At"].apply(lambda t: datetime.utcfromtimestamp(int(t)).strftime('%Y-%m-%d %H:%M:%S'))
     df["One-Time"] = df["One-Time"].apply(lambda x: "Yes" if x else "No")
@@ -171,35 +163,11 @@ body { background-color: #f5f7fa; }
   from { text-shadow: 0 0 5px #00c6ff, 0 0 10px #0072ff; }
   to { text-shadow: 0 0 15px #00c6ff, 0 0 30px #0072ff; }
 }
-.name {
-    text-align: center;
-    font-family: 'Poppins', sans-serif;
-    font-size: 1.1rem;
-    color: #333;
-    margin-bottom: 2rem;
-    font-style: italic;
-}
-.footer {
-    text-align: center;
-    font-family: 'Poppins', sans-serif;
-    color: #888;
-    font-size: 0.9rem;
-    margin-top: 3rem;
-    border-top: 1px solid #ddd;
-    padding-top: 0.8rem;
-}
-.card {
-    background: #fff;
-    padding: 1rem;
-    border-radius: 1rem;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    text-align: center;
-    margin-bottom: 1rem;
-}
-.card-title { font-weight: bold; font-size: 1.2rem; }
-.card-value { font-size: 1.5rem; color: #0072ff; font-weight: bold; }
-.progress { height: 10px; border-radius: 5px; background-color: #e0e0e0; }
-.progress-bar { height: 10px; border-radius: 5px; background-color: #0072ff; }
+.name { text-align: center; font-family: 'Poppins', sans-serif; font-size:1.1rem; color:#333; margin-bottom:2rem; font-style:italic;}
+.footer { text-align:center; font-family:'Poppins',sans-serif; color:#888; font-size:0.9rem; margin-top:3rem; border-top:1px solid #ddd; padding-top:0.8rem; }
+.card { background:#fff; padding:1rem; border-radius:1rem; box-shadow:0 4px 15px rgba(0,0,0,0.1); text-align:center; margin-bottom:1rem; }
+.card-title { font-weight:bold; font-size:1.2rem; }
+.card-value { font-size:1.5rem; color:#0072ff; font-weight:bold; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -207,62 +175,73 @@ st.markdown("<div class='header'>🔐 Secure File/Text Share</div>", unsafe_allo
 st.markdown("<div class='name'>✨ Made with ❤️ by <b>Nabeel</b> ✨</div>", unsafe_allow_html=True)
 
 # =============================
-# ⚙️ MAIN APP (Text/File upload & download)
+# ⚙️ UPLOAD & DOWNLOAD
 # =============================
 if "one_time_download" not in st.session_state:
     st.session_state["one_time_download"] = True
 
 tab = st.tabs(["📤 Upload", "📥 Download"])
 
-# ---- Upload Tab ----
+# ----- UPLOAD -----
 with tab[0]:
-    st.subheader("Upload Text or File & Generate Code")
+    st.subheader("Upload File or Text")
 
-    upload_type = st.radio("Upload Type", ("Text", "File"))
-    one_time = st.checkbox("One-time download (delete after first use)", True)
-    
-    # Calendar + Time picker
-    col1, col2 = st.columns(2)
-    with col1:
-        expiry_date = st.date_input("Select Expiry Date", value=datetime.today() + timedelta(days=1))
-    with col2:
-        expiry_time = st.time_input("Select Expiry Time", value=datetime.now().time())
+    upload_type = st.radio("Choose type", ["File", "Text"])
+    uploaded_file = None
+    file_type = "file"
 
-    if upload_type == "Text":
-        text_content = st.text_area("Enter your text here")
+    if upload_type == "File":
+        uploaded_file = st.file_uploader("Select a file", accept_multiple_files=False)
     else:
-        uploaded_files = st.file_uploader("Select files", accept_multiple_files=True)
+        text_content = st.text_area("Enter your text")
+        if text_content.strip():
+            # Save text to temporary file
+            fname = f"text_{int(time.time())}.txt"
+            path = UPLOAD_FOLDER / fname
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text_content)
+            uploaded_file = open(path, "rb")
+            uploaded_file.name = fname
+            file_type = "text"
+
+    # ===== Calendar & AM/PM Expiry =====
+    st.markdown("**Select Expiry Date & Time**")
+    expiry_date = st.date_input("Expiry Date", value=datetime.today() + timedelta(days=1))
+    col1, col2, col3 = st.columns([1,1,1])
+    with col1:
+        hour = st.selectbox("Hour", list(range(1,13)))
+    with col2:
+        minute = st.selectbox("Minute", list(range(0,60)))
+    with col3:
+        am_pm = st.selectbox("AM/PM", ["AM","PM"])
+    if am_pm=="PM" and hour!=12: hour+=12
+    if am_pm=="AM" and hour==12: hour=0
+    expiry_dt = datetime.combine(expiry_date, datetime.min.time()) + timedelta(hours=hour, minutes=minute)
+    expiry_seconds = int((expiry_dt - datetime.utcnow()).total_seconds())
+    st.write("Selected Expiry (UTC):", expiry_dt)
+
+    one_time = st.checkbox("One-time download (delete after first use)", True)
 
     if st.button("Generate Code"):
-        expiry_dt = datetime.combine(expiry_date, expiry_time)
-        expiry_seconds = int((expiry_dt - datetime.utcnow()).total_seconds())
-        if expiry_seconds <= 0:
-            st.error("Expiry time must be in the future.")
+        if not uploaded_file:
+            st.error("Please select a file or enter text.")
         else:
-            if upload_type == "Text":
-                if not text_content.strip():
-                    st.error("Please enter some text.")
-                else:
-                    file_path = UPLOAD_FOLDER / f"text_{int(time.time())}.txt"
-                    file_path.write_text(text_content, encoding="utf-8")
-                    code, expires_at = save_file(file_path.open("rb"), expiry_seconds, one_time, "text")
-                    st.success("✅ Text uploaded successfully!")
-                    st.write("Your secret code:")
-                    st.code(code)
-                    st.info(f"⏰ Expires on (UTC): {datetime.utcfromtimestamp(expires_at)}")
-            else:
-                for uploaded in uploaded_files:
-                    code, expires_at = save_file(uploaded, expiry_seconds, one_time, "file")
-                    st.success(f"✅ {uploaded.name} uploaded successfully!")
-                    st.write("Secret code:")
-                    st.code(code)
-                    st.info(f"⏰ Expires on (UTC): {datetime.utcfromtimestamp(expires_at)}")
+            try:
+                code, expires_at = save_file(uploaded_file, expiry_seconds, one_time, file_type)
+                st.session_state["one_time_download"] = one_time
+                st.success("✅ Uploaded successfully!")
+                st.write("Your secret code:")
+                st.code(code)
+                if file_type=="text":
+                    uploaded_file.close()
+            except Exception as e:
+                st.error(str(e))
 
-# ---- Download Tab ----
+# ----- DOWNLOAD -----
 with tab[1]:
-    st.subheader("Download Text/File by Code")
+    st.subheader("Download File or Text by Code")
     code_input = st.text_input("Enter your code")
-    if st.button("Download File"):
+    if st.button("Download File/Text"):
         if not code_input.strip():
             st.error("Please enter a valid code.")
         else:
@@ -271,77 +250,63 @@ with tab[1]:
             if not rec:
                 st.error("❌ Invalid or expired code.")
             else:
-                rec_id, saved, orig, expires_at, downloaded, one_time_flag, ftype = rec
+                rec_id, saved, orig, expires_at, downloaded, one_time_flag, file_type = rec
                 now = int(time.time())
                 if expires_at <= now:
                     st.error("⏳ Code expired.")
                 elif one_time_flag and downloaded:
-                    st.error("⚠️ Already downloaded (one-time).")
+                    st.error("⚠️ File already downloaded (one-time).")
                 else:
                     path = UPLOAD_FOLDER / saved
                     if not path.exists():
                         st.error("File not found.")
                     else:
-                        if ftype == "text":
-                            text_content = path.read_text(encoding="utf-8")
-                            st.text_area("Text Content:", value=text_content, height=200)
-                            st.download_button("⬇️ Download Text", text_content, file_name=orig)
-                        else:
-                            data = path.read_bytes()
-                            st.download_button("⬇️ Download File", data, file_name=orig)
+                        with open(path, "rb") as f:
+                            data = f.read()
+                        if file_type=="text":
+                            st.text(data.decode("utf-8"))
+                        st.download_button("⬇️ Download", data=data, file_name=orig)
                         mark_downloaded_and_maybe_delete(rec_id, saved, one_time_flag)
-                        st.success("✅ Download ready!")
 
 # =============================
-# ---- Admin Panel in Sidebar ----
+# ---- Admin Panel ----
 # =============================
 st.sidebar.subheader("🛠️ Admin Panel")
-if "is_admin" not in st.session_state:
-    st.session_state["is_admin"] = False
+if "is_admin" not in st.session_state: st.session_state["is_admin"]=False
 
 if not st.session_state["is_admin"]:
     password = st.sidebar.text_input("Enter admin passcode", type="password")
     if st.sidebar.button("Login as Admin"):
-        if password == ADMIN_PASSCODE:
-            st.session_state["is_admin"] = True
+        if password==ADMIN_PASSCODE:
+            st.session_state["is_admin"]=True
             st.sidebar.success("Access granted ✅")
         else:
             st.sidebar.error("Wrong passcode.")
 
 if st.session_state["is_admin"]:
     st.sidebar.success("Welcome Admin 👑")
-
-    # Logout button
     if st.sidebar.button("Logout"):
-        st.session_state["is_admin"] = False
+        st.session_state["is_admin"]=False
         st.sidebar.info("Logged out successfully.")
 
     # Dashboard metrics
     c = conn.cursor()
-    now = int(time.time())
-    c.execute("SELECT COUNT(*) FROM files")
-    total_files = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM files WHERE expires_at > ?", (now,))
-    active_files = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM files WHERE expires_at <= ?", (now,))
-    expired_files = c.fetchone()[0]
-    c.execute("SELECT SUM(downloaded) FROM files")
-    downloads_count = c.fetchone()[0] or 0
+    now=int(time.time())
+    total=c.execute("SELECT COUNT(*) FROM files").fetchone()[0]
+    active=c.execute("SELECT COUNT(*) FROM files WHERE expires_at>?",(now,)).fetchone()[0]
+    expired=c.execute("SELECT COUNT(*) FROM files WHERE expires_at<=?",(now,)).fetchone()[0]
+    downloads=c.execute("SELECT SUM(downloaded) FROM files").fetchone()[0] or 0
 
     st.sidebar.markdown("### 📊 Dashboard")
     st.sidebar.markdown(f"""
-    <div class='card'><div class='card-title'>Total Files</div><div class='card-value'>{total_files}</div></div>
-    <div class='card'><div class='card-title'>Active Files</div><div class='card-value'>{active_files}</div></div>
-    <div class='card'><div class='card-title'>Expired Files</div><div class='card-value'>{expired_files}</div></div>
-    <div class='card'><div class='card-title'>Downloads</div><div class='card-value'>{downloads_count}</div></div>
+    <div class='card'><div class='card-title'>Total Files</div><div class='card-value'>{total}</div></div>
+    <div class='card'><div class='card-title'>Active Files</div><div class='card-value'>{active}</div></div>
+    <div class='card'><div class='card-title'>Expired Files</div><div class='card-value'>{expired}</div></div>
+    <div class='card'><div class='card-title'>Downloads</div><div class='card-value'>{downloads}</div></div>
     """, unsafe_allow_html=True)
 
-    # Table of files
-    df = get_all_files()
     st.sidebar.markdown("### 🗂 Uploaded Files")
-    st.sidebar.dataframe(df, use_container_width=True)
-
-    # Delete a file
+    st.sidebar.dataframe(get_all_files(), use_container_width=True)
     file_id = st.sidebar.number_input("Enter File ID to Delete", min_value=1, step=1)
     if st.sidebar.button("Delete File"):
         if delete_file(file_id):
