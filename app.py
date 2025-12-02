@@ -92,11 +92,15 @@ def save_file(uploaded_file, expiry_seconds, one_time=True, file_type="file"):
     with open(dest, "wb") as f:
         f.write(uploaded_file.read())
 
-    c.execute(
-        "INSERT INTO files (code, saved_name, original_name, created_at, expires_at, one_time, type) 
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (code, saved_name, original_name, timestamp, expires_at, int(one_time), file_type)
-    )
+   c.execute(
+    """
+    INSERT INTO files 
+    (code, saved_name, original_name, created_at, expires_at, one_time, type)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    """,
+    (code, saved_name, original_name, created_at, expires_at, one_time, file_type)
+)
+
     conn.commit()
     return code, expires_at
 
