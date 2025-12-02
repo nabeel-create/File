@@ -7,12 +7,14 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 import pandas as pd
+from io import BytesIO
 
 # =============================
 # 🌐 CONFIGURATION
 # =============================
 UPLOAD_FOLDER = Path("uploads")
 DB_PATH = "files.db"
+CODE_LENGTH = 8
 MAX_FILE_SIZE_MB = 50
 ADMIN_PASSCODE = "admin123"
 
@@ -45,7 +47,7 @@ conn = init_db()
 # =============================
 # 🔧 HELPER FUNCTIONS
 # =============================
-def generate_code(n=8):
+def generate_code(n=CODE_LENGTH):
     alphabet = string.ascii_letters + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(n))
 
@@ -72,19 +74,24 @@ def save_file(uploaded_file, expiry_seconds, one_time=True, file_type="file"):
         raise ValueError(f"File exceeds {MAX_FILE_SIZE_MB} MB limit.")
 
     code = generate_code()
+    c = conn.cursor()
+    while True:
+        c.execute("SELECT 1 FROM files WHERE code=?", (code,))
+        if c.fetchone() is None:
+            break
+        code = generate_code()
+
     timestamp = int(time.time())
     expires_at = timestamp + int(expiry_seconds)
-    original_name = getattr(uploaded_file, "name", f"{timestamp}.dat")
-    saved_name = f"{timestamp}_{secrets.token_hex(8)}_{original_name}"
-    path = UPLOAD_FOLDER / saved_name
-    with open(path, "wb") as f:
+    saved_name = f"{timestamp}_{secrets.token_hex(8)}_{uploaded_file.name}"
+    dest = UPLOAD_FOLDER / saved_name
+    with open(dest, "wb") as f:
         f.write(uploaded_file.read())
 
-    c = conn.cursor()
-    c.execute("""
-        INSERT INTO files (code, saved_name, original_name, created_at, expires_at, one_time, type)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (code, saved_name, original_name, timestamp, expires_at, int(one_time), file_type))
+    c.execute(
+        "INSERT INTO files (code, saved_name, original_name, created_at, expires_at, one_time, type) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (code, saved_name, uploaded_file.name, timestamp, expires_at, int(one_time), file_type)
+    )
     conn.commit()
     return code, expires_at
 
@@ -138,20 +145,13 @@ st.set_page_config(page_title="File/Text Share by Nabeel", layout="centered")
 st.markdown("""
 <style>
 body { background-color: #f5f7fa; }
-.header {
-    text-align: center; padding:1.5rem; font-size:2rem; font-weight:bold;
-    font-family:'Poppins',sans-serif; color:white;
-    background: linear-gradient(90deg,#0072ff,#00c6ff);
-    border-radius:1rem; box-shadow:0 4px 20px rgba(0,0,0,0.2); margin-bottom:1rem;
-    animation: glow 2s ease-in-out infinite alternate;
-}
-@keyframes glow {
-  from { text-shadow:0 0 5px #00c6ff,0 0 10px #0072ff;}
-  to { text-shadow:0 0 15px #00c6ff,0 0 30px #0072ff;}
-}
-.name { text-align:center; font-family:'Poppins',sans-serif; font-size:1.1rem; color:#333; margin-bottom:2rem; font-style:italic;}
-.footer { text-align:center; font-family:'Poppins',sans-serif; color:#888; font-size:0.9rem; margin-top:3rem; border-top:1px solid #ddd; padding-top:0.8rem;}
-.card { background:#fff; padding:1rem; border-radius:1rem; box-shadow:0 4px 15px rgba(0,0,0,0.1); text-align:center; margin-bottom:1rem;}
+.header { text-align:center; padding:1.5rem; font-size:2rem; font-weight:bold;
+ color:white; background:linear-gradient(90deg,#0072ff,#00c6ff); border-radius:1rem;
+ box-shadow:0 4px 20px rgba(0,0,0,0.2); margin-bottom:1rem; animation: glow 2s ease-in-out infinite alternate; }
+@keyframes glow { from { text-shadow:0 0 5px #00c6ff,0 0 10px #0072ff; } to { text-shadow:0 0 15px #00c6ff,0 0 30px #0072ff; } }
+.name { text-align:center; font-family:'Poppins',sans-serif; font-size:1.1rem; color:#333; margin-bottom:2rem; font-style:italic; }
+.footer { text-align:center; font-family:'Poppins',sans-serif; color:#888; font-size:0.9rem; margin-top:3rem; border-top:1px solid #ddd; padding-top:0.8rem; }
+.card { background:#fff; padding:1rem; border-radius:1rem; box-shadow:0 4px 15px rgba(0,0,0,0.1); text-align:center; margin-bottom:1rem; }
 .card-title { font-weight:bold; font-size:1.2rem; }
 .card-value { font-size:1.5rem; color:#0072ff; font-weight:bold; }
 </style>
@@ -163,10 +163,9 @@ st.markdown("<div class='name'>✨ Made with ❤️ by <b>Nabeel</b> ✨</div>",
 # =============================
 # ⚙️ UPLOAD & DOWNLOAD
 # =============================
-if "one_time_download" not in st.session_state:
-    st.session_state["one_time_download"] = True
+if "one_time_download" not in st.session_state: st.session_state["one_time_download"]=True
 
-tab = st.tabs(["📤 Upload", "📥 Download"])
+tab = st.tabs(["📤 Upload","📥 Download"])
 
 # ----- UPLOAD -----
 with tab[0]:
@@ -180,17 +179,13 @@ with tab[0]:
     else:
         text_content = st.text_area("Enter your text")
         if text_content.strip():
-            fname = f"text_{int(time.time())}.txt"
-            path = UPLOAD_FOLDER / fname
-            with open(path,"w",encoding="utf-8") as f:
-                f.write(text_content)
-            uploaded_file = open(path,"rb")
-            uploaded_file.name = fname
+            uploaded_file = BytesIO(text_content.encode("utf-8"))
+            uploaded_file.name = f"text_{int(time.time())}.txt"
             file_type = "text"
 
     st.markdown("**Select Expiry Date & Time**")
-    expiry_date = st.date_input("Expiry Date", value=datetime.today()+timedelta(days=1))
-    col1, col2, col3 = st.columns([1,1,1])
+    expiry_date = st.date_input("Expiry Date", value=datetime.today() + timedelta(days=1))
+    col1,col2,col3 = st.columns([1,1,1])
     with col1: hour = st.selectbox("Hour", list(range(1,13)))
     with col2: minute = st.selectbox("Minute", list(range(0,60)))
     with col3: am_pm = st.selectbox("AM/PM", ["AM","PM"])
@@ -208,11 +203,10 @@ with tab[0]:
         else:
             try:
                 code, expires_at = save_file(uploaded_file, expiry_seconds, one_time, file_type)
-                st.session_state["one_time_download"] = one_time
+                st.session_state["one_time_download"]=one_time
                 st.success("✅ Uploaded successfully!")
                 st.write("Your secret code:")
                 st.code(code)
-                if file_type=="text": uploaded_file.close()
             except Exception as e:
                 st.error(str(e))
 
@@ -229,26 +223,21 @@ with tab[1]:
             if not rec:
                 st.error("❌ Invalid or expired code.")
             else:
-                rec_id, saved, orig, expires_at, downloaded, one_time_flag, file_type = rec
-                now = int(time.time())
-                if expires_at <= now:
-                    st.error("⏳ Code expired.")
-                elif one_time_flag and downloaded:
-                    st.error("⚠️ File already downloaded (one-time).")
+                rec_id,saved,orig,expires_at,downloaded,one_time_flag,file_type = rec
+                now=int(time.time())
+                if expires_at<=now: st.error("⏳ Code expired.")
+                elif one_time_flag and downloaded: st.error("⚠️ File already downloaded (one-time).")
                 else:
-                    path = UPLOAD_FOLDER / saved
-                    if not path.exists():
-                        st.error("File not found.")
+                    path=UPLOAD_FOLDER/saved
+                    if not path.exists(): st.error("File not found.")
                     else:
-                        with open(path,"rb") as f:
-                            data = f.read()
-                        if file_type=="text":
-                            st.text(data.decode("utf-8"))
+                        with open(path,"rb") as f: data=f.read()
+                        if file_type=="text": st.text(data.decode("utf-8"))
                         st.download_button("⬇️ Download", data=data, file_name=orig)
                         mark_downloaded_and_maybe_delete(rec_id, saved, one_time_flag)
 
 # =============================
-# ---- ADMIN PANEL ----
+# ---- Admin Panel ----
 # =============================
 st.sidebar.subheader("🛠️ Admin Panel")
 if "is_admin" not in st.session_state: st.session_state["is_admin"]=False
@@ -259,7 +248,8 @@ if not st.session_state["is_admin"]:
         if password==ADMIN_PASSCODE:
             st.session_state["is_admin"]=True
             st.sidebar.success("Access granted ✅")
-        else: st.sidebar.error("Wrong passcode.")
+        else:
+            st.sidebar.error("Wrong passcode.")
 
 if st.session_state["is_admin"]:
     st.sidebar.success("Welcome Admin 👑")
@@ -267,6 +257,7 @@ if st.session_state["is_admin"]:
         st.session_state["is_admin"]=False
         st.sidebar.info("Logged out successfully.")
 
+    # Dashboard metrics
     c = conn.cursor()
     now=int(time.time())
     total=c.execute("SELECT COUNT(*) FROM files").fetchone()[0]
