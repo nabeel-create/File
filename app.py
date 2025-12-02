@@ -66,43 +66,41 @@ def cleanup_expired():
     c.execute("DELETE FROM files WHERE expires_at <= ?", (now,))
     conn.commit()
 
-def save_file(uploaded_file, expiry_seconds, one_time=True, file_type="file"):
-    uploaded_file.seek(0, os.SEEK_END)
-    size = uploaded_file.tell()
-    uploaded_file.seek(0)
-    if size > MAX_FILE_SIZE_MB * 1024 * 1024:
-        raise ValueError(f"File exceeds {MAX_FILE_SIZE_MB} MB limit.")
-
-    code = generate_code()
+def save_file(uploaded_file, expires_at, one_time, file_type):
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    while True:
-        c.execute("SELECT 1 FROM files WHERE code=?", (code,))
-        if c.fetchone() is None:
-            break
-        code = generate_code()
 
+    # Generate a code
+    code = secrets.token_hex(4)
+
+    # Save file with safe name
     timestamp = int(time.time())
-    expires_at = timestamp + int(expiry_seconds)
-
-    # Safe filename for text uploads
     original_name = getattr(uploaded_file, "original_name", uploaded_file.name)
     saved_name = f"{timestamp}_{secrets.token_hex(8)}_{original_name}"
+    file_path = UPLOAD_FOLDER / saved_name
 
-    dest = UPLOAD_FOLDER / saved_name
-    with open(dest, "wb") as f:
+    # Save file to disk
+    with open(file_path, "wb") as f:
         f.write(uploaded_file.read())
 
-   c.execute(
-    """
-    INSERT INTO files 
-    (code, saved_name, original_name, created_at, expires_at, one_time, type)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    """,
-    (code, saved_name, original_name, created_at, expires_at, one_time, file_type)
-)
+    created_at = datetime.utcnow()
+
+    # -----------------------------
+    #     CORRECT SQL INSERT
+    # -----------------------------
+    c.execute(
+        """
+        INSERT INTO files 
+        (code, saved_name, original_name, created_at, expires_at, one_time, type)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (code, saved_name, original_name, created_at, expires_at, one_time, file_type)
+    )
 
     conn.commit()
-    return code, expires_at
+    conn.close()
+
+    return code
 
 def get_record_by_code(code):
     c = conn.cursor()
